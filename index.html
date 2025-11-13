@@ -2,146 +2,120 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>試薬バーコード管理</title>
-<script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
-<!-- Firebase SDK -->
+<title>🧪 試薬バーコード管理</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
 <style>
-  #scanner { width: 100%; max-width: 480px; margin:auto; }
-  video { width: 100%; }
-  .info { font-weight: bold; margin-top: 1rem; text-align:center; }
-  input, button { display:block; margin: 0.5rem auto; width:90%; max-width:300px; padding:0.5rem; }
+body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; }
+#camera-container { width:100%; max-width:480px; margin-top:20px; position:relative; }
+#barcode-result { text-align:center; margin-top:10px; font-weight:bold; font-size:1.2em; }
+#form-container { display:none; background:white; padding:15px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.2); margin-top:20px; width:100%; max-width:480px; }
+#form-container input, #form-container button { width:100%; padding:8px; margin-top:8px; font-size:1em; }
+#form-container button { background:#4CAF50; color:white; border:none; border-radius:4px; cursor:pointer; }
+#form-container button:hover { background:#45a049; }
 </style>
 </head>
 <body>
 
-<h1 style="text-align:center;">🧪 試薬バーコード管理</h1>
+<h1>🧪 試薬バーコード管理</h1>
 
-<div id="scanner">
-  <video autoplay muted playsinline></video>
-  <p class="info" id="barcode-status">バーコード未検出</p>
+<div id="camera-container">
+  <video id="video" width="100%" autoplay muted playsinline></video>
+  <p id="barcode-result">バーコード未検出</p>
 </div>
 
-<div id="form-container" style="display:none;">
-  <h2 style="text-align:center;">試薬情報</h2>
+<div id="form-container">
+  <label>試薬名</label>
   <input type="text" id="reagent-name" placeholder="試薬名">
-  <input type="number" id="reagent-qty" placeholder="数量" value="1" min="1">
+  <label>数量</label>
+  <input type="number" id="reagent-qty" min="1" value="1">
+  <label>有効期限</label>
   <input type="date" id="reagent-exp">
-  <button id="register-btn">登録 / 数量更新</button>
+  <button id="save-btn">登録 / 更新</button>
 </div>
-
-<h2 style="text-align:center;">在庫一覧</h2>
-<table border="1" style="width:90%; max-width:600px; margin:auto; text-align:center;">
-  <thead><tr><th>バーコード</th><th>試薬名</th><th>数量</th><th>有効期限</th><th>更新</th></tr></thead>
-  <tbody id="reagent-table"></tbody>
-</table>
 
 <script>
-  // ---------------- Firebase 初期化 ----------------
+  // -------------------------------
+  // Firebase 初期化
+  // -------------------------------
   const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
     projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
   };
-  const app = firebase.initializeApp(firebaseConfig);
+  firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // ---------------- QuaggaJS バーコードスキャン ----------------
-  const statusElem = document.getElementById("barcode-status");
+  // -------------------------------
+  // QuaggaJS 初期化
+  // -------------------------------
+  const statusElem = document.getElementById('barcode-result');
   let lastCode = "";
+  let cooldown = false;
 
   Quagga.init({
-    inputStream: { type: "LiveStream", constraints: { facingMode: "environment" }, target: document.querySelector('#scanner') },
-    decoder: { readers: ["code_128_reader","ean_reader","upc_reader"] }
-  }, function(err) {
+    inputStream: { type:"LiveStream", constraints:{facingMode:"environment"}, target:document.querySelector('#camera-container') },
+    decoder: { readers:["code_128_reader","ean_reader","upc_reader"] }
+  }, function(err){
     if(err){ statusElem.textContent = "カメラ初期化エラー: " + err; return; }
     Quagga.start();
   });
 
   Quagga.onDetected(async function(data){
     const code = data.codeResult.code;
-    if(code === lastCode) return; // クールダウン
+    if(code === lastCode || cooldown) return;
     lastCode = code;
+    cooldown = true;
+    setTimeout(()=>{ cooldown=false; }, 2000);
     statusElem.textContent = "検出: " + code;
-    checkReagent(code);
-  });
 
-  // ---------------- バーコード確認・フォーム表示 ----------------
-  async function checkReagent(barcode){
-    const doc = await db.collection("reagents").doc(barcode).get();
-    const form = document.getElementById("form-container");
-    if(doc.exists){
-      const data = doc.data();
-      document.getElementById("reagent-name").value = data.name;
-      document.getElementById("reagent-qty").value = 1;
-      document.getElementById("reagent-exp").value = data.expiration;
-      form.style.display = "block";
-    } else {
-      // 新規登録フォーム
-      document.getElementById("reagent-name").value = "";
-      document.getElementById("reagent-qty").value = 1;
-      document.getElementById("reagent-exp").value = "";
-      form.style.display = "block";
-    }
-  }
+    const form = document.getElementById('form-container');
+    form.style.display = "block";
 
-  // ---------------- 登録 / 数量更新 ----------------
-  document.getElementById("register-btn").addEventListener("click", async () => {
-    const name = document.getElementById("reagent-name").value;
-    const qty = parseInt(document.getElementById("reagent-qty").value);
-    const exp = document.getElementById("reagent-exp").value;
-    if(!lastCode || !name || !qty || !exp) return alert("全て入力してください");
-
-    const docRef = db.collection("reagents").doc(lastCode);
+    const docRef = db.collection("reagents").doc(code);
     const doc = await docRef.get();
     if(doc.exists){
-      // 既存なら数量加算
-      const newQty = doc.data().qty + qty;
-      await docRef.update({ qty: newQty, updated_at: new Date() });
+      const d = doc.data();
+      document.getElementById('reagent-name').value = d.name;
+      document.getElementById('reagent-qty').value = 1;
+      document.getElementById('reagent-exp').value = d.expiration;
     } else {
-      // 新規登録
-      await docRef.set({ barcode: lastCode, name: name, qty: qty, expiration: exp, created_at: new Date(), updated_at: new Date() });
+      document.getElementById('reagent-name').value = "";
+      document.getElementById('reagent-qty').value = 1;
+      document.getElementById('reagent-exp').value = "";
     }
-    form.style.display = "none";
-    lastCode = "";
-    loadTable();
+
+    // 保存ボタン
+    const btn = document.getElementById('save-btn');
+    btn.onclick = async () => {
+      const name = document.getElementById('reagent-name').value;
+      const qty = parseInt(document.getElementById('reagent-qty').value);
+      const exp = document.getElementById('reagent-exp').value;
+      if(!name || !exp){ alert("名前と有効期限は必須です"); return; }
+
+      const docSnap = await docRef.get();
+      if(docSnap.exists){
+        // 既存試薬は数量を足す
+        await docRef.update({
+          qty: docSnap.data().qty + qty,
+          updated_at: new Date().toISOString()
+        });
+        alert(name + " の数量を更新しました");
+      } else {
+        // 新規試薬登録
+        await docRef.set({
+          name:name,
+          qty:qty,
+          expiration:exp,
+          created_at:new Date().toISOString(),
+          updated_at:new Date().toISOString()
+        });
+        alert(name + " を登録しました");
+      }
+      form.style.display = "none";
+    };
   });
-
-  // ---------------- 在庫一覧表示 ----------------
-  async function loadTable(){
-    const tbody = document.getElementById("reagent-table");
-    tbody.innerHTML = "";
-    const snapshot = await db.collection("reagents").get();
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${doc.id}</td>
-        <td>${data.name}</td>
-        <td>${data.qty}</td>
-        <td>${data.expiration}</td>
-        <td><button onclick="updateQty('${doc.id}')">+1</button></td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  window.updateQty = async function(barcode){
-    const docRef = db.collection("reagents").doc(barcode);
-    const doc = await docRef.get();
-    if(doc.exists){
-      const newQty = doc.data().qty + 1;
-      await docRef.update({ qty: newQty, updated_at: new Date() });
-      loadTable();
-    }
-  }
-
-  loadTable();
 </script>
-
 </body>
 </html>
