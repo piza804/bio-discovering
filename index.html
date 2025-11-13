@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>試薬在庫管理</title>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js"></script>
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2em; background: #f8f9fa; }
+    h1 { color: #333; }
+    button { padding: 10px 20px; margin: 10px 0; border: none; border-radius: 8px; background: #007bff; color: white; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    input, select { padding: 8px; margin: 5px 0; width: 100%; max-width: 300px; }
+    #register-page, #inventory-page { display: none; }
+    table { border-collapse: collapse; width: 100%; background: white; }
+    th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>試薬在庫管理システム</h1>
+
+  <!-- 登録ページ -->
+  <div id="register-page">
+    <h2>試薬登録</h2>
+    <div id="reader" style="width:300px;"></div>
+    <p>バーコード値: <span id="barcode"></span></p>
+    <input id="name" placeholder="試薬名" />
+    <input id="maker" placeholder="メーカー" />
+    <input id="amount" placeholder="残量 (mLなど)" />
+    <button id="save-btn">登録する</button>
+    <br />
+    <button onclick="showInventory()">在庫一覧を見る</button>
+  </div>
+
+  <!-- 在庫一覧ページ -->
+  <div id="inventory-page">
+    <h2>在庫一覧</h2>
+    <table id="inventory-table">
+      <thead><tr><th>バーコード</th><th>試薬名</th><th>メーカー</th><th>残量</th><th>登録日</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <button onclick="showRegister()">新規登録に戻る</button>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
+    import { getFirestore, collection, addDoc, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+     apiKey: "AIzaSyABwMNoS7Y0qkxIC0SjAcH8ZM6Hwsn5eKc",
+  　 authDomain: "bio-74839.firebaseapp.com",
+     projectId: "bio-74839",
+     storageBucket: "bio-74839.firebasestorage.app",
+     messagingSenderId: "171170060764",
+     appId: "1:171170060764:web:95f8762e90b485b7a5d719",
+     measurementId: "G-FDTWN7KDH5"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    const registerPage = document.getElementById("register-page");
+    const inventoryPage = document.getElementById("inventory-page");
+    const barcodeElem = document.getElementById("barcode");
+
+    function showRegister() {
+      inventoryPage.style.display = "none";
+      registerPage.style.display = "block";
+    }
+
+    async function showInventory() {
+      registerPage.style.display = "none";
+      inventoryPage.style.display = "block";
+      const tbody = document.querySelector("#inventory-table tbody");
+      tbody.innerHTML = "";
+      const snapshot = await getDocs(collection(db, "inventory"));
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        const row = `<tr><td>${d.barcode}</td><td>${d.name}</td><td>${d.maker}</td><td>${d.amount}</td><td>${d.createdAt?.toDate().toLocaleString() || ""}</td></tr>`;
+        tbody.innerHTML += row;
+      });
+    }
+
+    document.getElementById("save-btn").addEventListener("click", async () => {
+      const barcode = barcodeElem.textContent.trim();
+      const name = document.getElementById("name").value.trim();
+      const maker = document.getElementById("maker").value.trim();
+      const amount = document.getElementById("amount").value.trim();
+      if (!barcode || !name) {
+        alert("バーコードと試薬名は必須です");
+        return;
+      }
+      await addDoc(collection(db, "inventory"), {
+        barcode, name, maker, amount, createdAt: serverTimestamp()
+      });
+      alert("登録しました！");
+      document.getElementById("name").value = "";
+      document.getElementById("maker").value = "";
+      document.getElementById("amount").value = "";
+      showInventory();
+    });
+
+    // 初期ページ表示
+    showRegister();
+
+    // バーコードスキャン設定
+    const html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: 250 },
+      (decodedText) => {
+        barcodeElem.textContent = decodedText;
+        html5QrCode.stop();
+      }
+    );
+  </script>
+</body>
+</html>
