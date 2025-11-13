@@ -7,13 +7,19 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
 <style>
-body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; }
-#camera-container { width:100%; max-width:480px; margin-top:20px; position:relative; }
-#barcode-result { text-align:center; margin-top:10px; font-weight:bold; font-size:1.2em; }
-#form-container { display:none; background:white; padding:15px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.2); margin-top:20px; width:100%; max-width:480px; }
-#form-container input, #form-container button { width:100%; padding:8px; margin-top:8px; font-size:1em; }
-#form-container button { background:#4CAF50; color:white; border:none; border-radius:4px; cursor:pointer; }
+body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; font-size:18px; }
+h1 { margin-top:20px; font-size:2em; }
+#camera-container { width:100%; max-width:600px; margin-top:20px; position:relative; }
+#barcode-result { text-align:center; margin-top:10px; font-weight:bold; font-size:1.4em; }
+#form-container { display:none; background:white; padding:20px; border-radius:10px; box-shadow:0 3px 12px rgba(0,0,0,0.2); margin-top:20px; width:90%; max-width:600px; }
+#form-container input, #form-container button { width:100%; padding:12px; margin-top:12px; font-size:1.2em; }
+#form-container button { background:#4CAF50; color:white; border:none; border-radius:6px; cursor:pointer; }
 #form-container button:hover { background:#45a049; }
+#inventory-table { width:90%; max-width:800px; margin-top:30px; border-collapse: collapse; }
+#inventory-table th, #inventory-table td { border:1px solid #ccc; padding:10px; text-align:center; font-size:1.1em; }
+#inventory-table th { background:#e0e0e0; }
+.out-btn { background:#f44336; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; }
+.out-btn:hover { background:#d32f2f; }
 </style>
 </head>
 <body>
@@ -35,6 +41,14 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0;
   <button id="save-btn">登録 / 更新</button>
 </div>
 
+<h2>📦 在庫一覧</h2>
+<table id="inventory-table">
+  <thead>
+    <tr><th>試薬名</th><th>数量</th><th>有効期限</th><th>バーコード</th><th>操作</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
 <script>
   // -------------------------------
   // Firebase 初期化
@@ -46,6 +60,42 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0;
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
+
+  // -------------------------------
+  // 在庫一覧表示
+  // -------------------------------
+  async function refreshInventory() {
+    const tbody = document.querySelector('#inventory-table tbody');
+    tbody.innerHTML = "";
+    const snapshot = await db.collection("reagents").get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${data.name}</td>
+        <td>${data.qty}</td>
+        <td>${data.expiration}</td>
+        <td>${doc.id}</td>
+        <td><button class="out-btn" data-id="${doc.id}">出庫</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    // 出庫ボタン
+    document.querySelectorAll('.out-btn').forEach(btn=>{
+      btn.onclick = async ()=>{
+        const docRef = db.collection("reagents").doc(btn.dataset.id);
+        const docSnap = await docRef.get();
+        if(docSnap.exists){
+          const newQty = Math.max(docSnap.data().qty - 1, 0);
+          await docRef.update({ qty:newQty, updated_at:new Date().toISOString() });
+          alert(docSnap.data().name + " を出庫しました (残り: " + newQty + ")");
+          refreshInventory();
+        }
+      };
+    });
+  }
+  refreshInventory();
 
   // -------------------------------
   // QuaggaJS 初期化
@@ -96,24 +146,14 @@ body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0;
 
       const docSnap = await docRef.get();
       if(docSnap.exists){
-        // 既存試薬は数量を足す
-        await docRef.update({
-          qty: docSnap.data().qty + qty,
-          updated_at: new Date().toISOString()
-        });
+        await docRef.update({ qty: docSnap.data().qty + qty, updated_at: new Date().toISOString() });
         alert(name + " の数量を更新しました");
       } else {
-        // 新規試薬登録
-        await docRef.set({
-          name:name,
-          qty:qty,
-          expiration:exp,
-          created_at:new Date().toISOString(),
-          updated_at:new Date().toISOString()
-        });
+        await docRef.set({ name:name, qty:qty, expiration:exp, created_at:new Date().toISOString(), updated_at:new Date().toISOString() });
         alert(name + " を登録しました");
       }
       form.style.display = "none";
+      refreshInventory();
     };
   });
 </script>
