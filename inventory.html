@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>試薬在庫一覧</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; }
+    .container { padding: 1rem; max-width: 600px; margin: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
+    button { padding: 0.3rem 0.5rem; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📦 在庫一覧</h1>
+  <button onclick="location.href='register.html'">登録ページに戻る</button>
+  <table>
+    <thead>
+      <tr>
+        <th>試薬名</th>
+        <th>数量</th>
+        <th>有効期限</th>
+        <th>出庫</th>
+      </tr>
+    </thead>
+    <tbody id="inventory-body"></tbody>
+  </table>
+</div>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  async function loadInventory(){
+    const tbody = document.getElementById("inventory-body");
+    tbody.innerHTML = "";
+    const snapshot = await db.collection("reagents").get();
+    snapshot.forEach(doc=>{
+      const data = doc.data();
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${data.name}</td>
+        <td>${data.qty}</td>
+        <td>${data.expiration}</td>
+        <td><button onclick="decrementQty('${doc.id}',${data.qty})">出庫</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function decrementQty(id, currentQty){
+    if(currentQty <= 0) return;
+    await db.collection("reagents").doc(id).update({
+      qty: currentQty - 1,
+      updated_at: new Date()
+    });
+    loadInventory(); // 再読み込み
+  }
+
+  loadInventory();
+</script>
+</body>
+</html>
