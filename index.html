@@ -1,40 +1,51 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>試薬バーコード管理</title>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    #scanner { width: 480px; margin: auto; }
+    body { font-family: sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+    h1,h3 { text-align: center; }
+    #scanner { width: 90%; max-width: 480px; margin: 0 auto; }
+    #result { font-size: 1.5rem; text-align: center; margin: 10px 0; }
+    #form { display:none; margin: 20px auto; padding: 20px; max-width: 400px; background:#fff; border-radius:10px; box-shadow:0 2px 5px rgba(0,0,0,0.2);}
+    #form input, #form button { width: 100%; padding: 12px; margin: 8px 0; font-size: 1.2rem; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-    button { padding: 6px 12px; margin: 2px; }
+    th, td { border: 1px solid #ccc; padding: 12px; text-align: center; font-size: 1.2rem; }
+    button { cursor: pointer; }
+    .page { display: none; }
+    .active { display: block; }
   </style>
 </head>
 <body>
 
-<h1>🧪 試薬バーコード管理（ブラウザ完結）</h1>
+<div id="scanPage" class="page active">
+  <h1>🧪 バーコードスキャン</h1>
+  <div id="scanner">
+    <video id="video" autoplay muted playsinline></video>
+    <p id="result">バーコード未検出</p>
+  </div>
 
-<div id="scanner">
-  <video id="video" autoplay muted playsinline></video>
-  <p id="result">バーコード未検出</p>
+  <div id="form">
+    <h3>新規試薬登録</h3>
+    <input id="name" placeholder="試薬名">
+    <input type="number" id="qty" value="1" min="1" max="100">
+    <input type="date" id="exp">
+    <button onclick="register()">登録</button>
+  </div>
 </div>
 
-<div id="form" style="display:none; margin-top:20px;">
-  <h3>新規試薬登録</h3>
-  <input id="name" placeholder="試薬名">
-  <input type="number" id="qty" value="1" min="1" max="100">
-  <input type="date" id="exp">
-  <button onclick="register()">登録</button>
+<div id="inventoryPage" class="page">
+  <h1>📦 在庫一覧</h1>
+  <table id="inventory">
+    <thead><tr><th>試薬名</th><th>数量</th><th>有効期限</th><th>出庫</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <button onclick="backToScan()" style="margin-top:20px; padding:12px; font-size:1.2rem;">スキャンに戻る</button>
 </div>
-
-<h3>在庫一覧</h3>
-<table id="inventory">
-  <thead><tr><th>試薬名</th><th>数量</th><th>有効期限</th><th>出庫</th></tr></thead>
-  <tbody></tbody>
-</table>
 
 <script>
   // -------------------------------
@@ -54,6 +65,16 @@
   let lastCode = '';
   let cooldown = 3000;
   let lastScanTime = 0;
+  let confirmedCode = null;
+
+  const scanPage = document.getElementById('scanPage');
+  const inventoryPage = document.getElementById('inventoryPage');
+
+  function showPage(page) {
+    scanPage.classList.remove('active');
+    inventoryPage.classList.remove('active');
+    page.classList.add('active');
+  }
 
   // -------------------------------
   // QuaggaJS 初期化
@@ -72,14 +93,19 @@
 
     document.getElementById('result').innerText = "検出: " + code;
 
+    if(confirmedCode === code) return; // 既に確認済みならスキップ
+
     // Firebaseで既存確認
     db.collection("reagents").where("barcode","==",code).get().then(snapshot => {
       if(!snapshot.empty){
         const doc = snapshot.docs[0];
         if(confirm(`${doc.data().name} ですか？`)){
           // 数量 +1
-          doc.ref.update({ qty: doc.data().qty + 1 });
-          updateInventory();
+          doc.ref.update({ qty: doc.data().qty + 1 }).then(() => {
+            confirmedCode = code; // 1回だけ確認
+            alert("数量を更新しました");
+            showInventory();
+          });
         }
       } else {
         // 新規登録フォーム表示
@@ -98,22 +124,32 @@
     const qty = parseInt(document.getElementById('qty').value);
     const exp = document.getElementById('exp').value;
     if(!name || !exp) { alert("入力してください"); return; }
-    db.collection("reagents").add({ barcode: code, name, qty, expiration: exp });
-    document.getElementById('form').style.display = 'none';
-    updateInventory();
+    db.collection("reagents").add({ barcode: code, name, qty, expiration: exp }).then(() => {
+      document.getElementById('form').style.display = 'none';
+      showInventory();
+    });
   }
 
-  function updateInventory(){
-    db.collection("reagents").get().then(snapshot => {
-      const tbody = document.querySelector("#inventory tbody");
-      tbody.innerHTML = '';
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const tr = document.createElement('tr');
-        tr.innerHTML = `<td>${data.name}</td><td>${data.qty}</td><td>${data.expiration}</td>
-                        <td><button onclick="outStock('${doc.id}')">出庫</button></td>`;
-        tbody.appendChild(tr);
-      });
+  function showInventory(){
+    updateInventory().then(() => showPage(inventoryPage));
+  }
+
+  function backToScan(){
+    confirmedCode = null;
+    lastCode = '';
+    showPage(scanPage);
+  }
+
+  async function updateInventory(){
+    const tbody = document.querySelector("#inventory tbody");
+    tbody.innerHTML = '';
+    const snapshot = await db.collection("reagents").get();
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${data.name}</td><td>${data.qty}</td><td>${data.expiration}</td>
+                      <td><button onclick="outStock('${doc.id}')">出庫</button></td>`;
+      tbody.appendChild(tr);
     });
   }
 
@@ -121,13 +157,11 @@
     const docRef = db.collection("reagents").doc(id);
     docRef.get().then(doc => {
       const newQty = Math.max(doc.data().qty - 1, 0);
-      docRef.update({ qty: newQty });
-      updateInventory();
+      docRef.update({ qty: newQty }).then(updateInventory);
     });
   }
 
   updateInventory();
-
 </script>
 
 </body>
