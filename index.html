@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>バーコード管理</title>
+  <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <h1>🧪 バーコードスキャン</h1>
+  <div id="scanner" style="width:100%; max-width:480px; margin:auto;">
+    <video id="video" width="100%" autoplay muted playsinline></video>
+    <p id="result" style="text-align:center;">バーコード未検出</p>
+  </div>
+
+  <script>
+    // --- Firebase 設定（ここにコピーした設定を貼る） ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyABwMNoS7Y0qkxIC0SjAcH8ZM6Hwsn5eKc",
+      authDomain: "bio-74839.firebaseapp.com",
+      projectId: "bio-74839",
+      storageBucket: "bio-74839.firebasestorage.app",
+      messagingSenderId: "171170060764",
+      appId: "1:171170060764:web:95f8762e90b485b7a5d719",
+      measurementId: "G-FDTWN7KDH5"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // --- QuaggaJS 初期化 ---
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        constraints: { facingMode: "environment" },
+        target: document.querySelector('#scanner')
+      },
+      decoder: { readers: ["code_128_reader","ean_reader","upc_reader"] }
+    }, function(err) {
+      if(err) { document.getElementById('result').textContent = "カメラエラー: "+err; return; }
+      Quagga.start();
+    });
+
+    // --- バーコード検出 ---
+    Quagga.onDetected(function(data){
+      const code = data.codeResult.code;
+      document.getElementById('result').textContent = "検出: " + code;
+
+      // --- Firebase に保存 ---
+      db.collection("reagents").doc(code).get().then(doc => {
+        if(doc.exists){
+          alert("既存バーコード: "+code);
+        } else {
+          const name = prompt("新規試薬名を入力");
+          const qty = prompt("数量を入力");
+          if(name && qty){
+            db.collection("reagents").doc(code).set({
+              name: name,
+              qty: parseInt(qty),
+              barcode: code,
+              created_at: new Date()
+            });
+            alert("登録しました: "+name);
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>バーコード管理</title>
+  <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+  <h1>🧪 バーコードスキャン</h1>
+  <div id="scanner" style="width:100%; max-width:480px; margin:auto;">
+    <video id="video" width="100%" autoplay muted playsinline></video>
+    <p id="result" style="text-align:center;">バーコード未検出</p>
+  </div>
+
+  <script>
+    // --- Firebase 設定（ここにコピーした設定を貼る） ---
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // --- QuaggaJS 初期化 ---
+    Quagga.init({
+      inputStream: {
+        type: "LiveStream",
+        constraints: { facingMode: "environment" },
+        target: document.querySelector('#scanner')
+      },
+      decoder: { readers: ["code_128_reader","ean_reader","upc_reader"] }
+    }, function(err) {
+      if(err) { document.getElementById('result').textContent = "カメラエラー: "+err; return; }
+      Quagga.start();
+    });
+
+    // --- バーコード検出 ---
+    Quagga.onDetected(function(data){
+      const code = data.codeResult.code;
+      document.getElementById('result').textContent = "検出: " + code;
+
+      // --- Firebase に保存 ---
+      db.collection("reagents").doc(code).get().then(doc => {
+        if(doc.exists){
+          alert("既存バーコード: "+code);
+        } else {
+          const name = prompt("新規試薬名を入力");
+          const qty = prompt("数量を入力");
+          if(name && qty){
+            db.collection("reagents").doc(code).set({
+              name: name,
+              qty: parseInt(qty),
+              barcode: code,
+              created_at: new Date()
+            });
+            alert("登録しました: "+name);
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
