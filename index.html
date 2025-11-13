@@ -3,148 +3,98 @@
 <head>
 <meta charset="UTF-8">
 <title>🧪 試薬バーコード管理</title>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://unpkg.com/@ericblade/quagga2@v0.0.9/dist/quagga.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
 <style>
-body { font-family: Arial, sans-serif; background: #f5f5f5; margin:0; padding:0; display:flex; flex-direction:column; align-items:center; font-size:18px; }
-h1 { margin-top:20px; font-size:2em; }
-#camera-container { width:100%; max-width:600px; margin-top:20px; position:relative; }
-#barcode-result { text-align:center; margin-top:10px; font-weight:bold; font-size:1.4em; }
-#form-container { display:none; background:white; padding:20px; border-radius:10px; box-shadow:0 3px 12px rgba(0,0,0,0.2); margin-top:20px; width:90%; max-width:600px; }
-#form-container input, #form-container button { width:100%; padding:12px; margin-top:12px; font-size:1.2em; }
-#form-container button { background:#4CAF50; color:white; border:none; border-radius:6px; cursor:pointer; }
-#form-container button:hover { background:#45a049; }
-#inventory-table { width:90%; max-width:800px; margin-top:30px; border-collapse: collapse; }
-#inventory-table th, #inventory-table td { border:1px solid #ccc; padding:10px; text-align:center; font-size:1.1em; }
-#inventory-table th { background:#e0e0e0; }
-.out-btn { background:#f44336; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; }
-.out-btn:hover { background:#d32f2f; }
+  body { font-family: sans-serif; max-width: 900px; margin:auto; padding:1rem; background:#f5f5f5; }
+  #barcode-scanner { width:100%; max-width:480px; margin:auto; text-align:center; }
+  video { width:100%; border-radius: 8px; box-shadow:0 2px 8px rgba(0,0,0,0.2);}
+  table { width:100%; border-collapse: collapse; margin-top:1rem; }
+  th, td { border:1px solid #aaa; padding:0.5rem; text-align:center; }
+  th { background:#eee; }
+  #form-container { background:#fff; padding:1rem; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); margin-top:1rem; }
+  button { padding:0.5rem 1rem; margin-top:0.5rem; border:none; background:#007bff; color:#fff; border-radius:4px; cursor:pointer;}
+  button:hover { background:#0056b3; }
 </style>
 </head>
 <body>
 
 <h1>🧪 試薬バーコード管理</h1>
 
-<div id="camera-container">
-  <video id="video" width="100%" autoplay muted playsinline></video>
+<div id="barcode-scanner">
+  <video id="video" autoplay muted playsinline></video>
   <p id="barcode-result">バーコード未検出</p>
 </div>
 
-<div id="form-container">
-  <label>試薬名</label>
-  <input type="text" id="reagent-name" placeholder="試薬名">
-  <label>数量</label>
-  <input type="number" id="reagent-qty" min="1" value="1">
-  <label>有効期限</label>
-  <input type="date" id="reagent-exp">
-  <button id="save-btn">登録 / 更新</button>
+<div id="form-container" style="display:none;">
+  <h2 id="form-title">新規試薬登録</h2>
+  <label>試薬名: <input type="text" id="reagent-name"></label><br>
+  <label>数量: <input type="number" id="reagent-qty" value="1" min="1"></label><br>
+  <label>有効期限: <input type="date" id="reagent-exp"></label><br>
+  <button id="submit-btn">登録 / 更新</button>
 </div>
 
-<h2>📦 在庫一覧</h2>
+<h2 id="inventory-title">📦 在庫一覧</h2>
 <table id="inventory-table">
   <thead>
-    <tr><th>試薬名</th><th>数量</th><th>有効期限</th><th>バーコード</th><th>操作</th></tr>
+    <tr><th>試薬名</th><th>数量</th><th>有効期限</th><th>バーコード</th><th>出庫</th></tr>
   </thead>
   <tbody></tbody>
 </table>
 
 <script>
-  // -------------------------------
-  // Firebase 初期化
-  // -------------------------------
+  // ===== Firebase 初期化 =====
   const firebaseConfig = {
     apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
     projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "SENDER_ID",
+    appId: "APP_ID"
   };
   firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
 
-  // -------------------------------
-  // 在庫一覧表示
-  // -------------------------------
-  async function refreshInventory() {
-    const tbody = document.querySelector('#inventory-table tbody');
-    tbody.innerHTML = "";
-    const snapshot = await db.collection("reagents").get();
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td>${data.name}</td>
-        <td>${data.qty}</td>
-        <td>${data.expiration}</td>
-        <td>${doc.id}</td>
-        <td><button class="out-btn" data-id="${doc.id}">出庫</button></td>
-      `;
-      tbody.appendChild(tr);
-    });
-
-    // 出庫ボタン
-    document.querySelectorAll('.out-btn').forEach(btn=>{
-      btn.onclick = async ()=>{
-        const docRef = db.collection("reagents").doc(btn.dataset.id);
-        const docSnap = await docRef.get();
-        if(docSnap.exists){
-          const newQty = Math.max(docSnap.data().qty - 1, 0);
-          await docRef.update({ qty:newQty, updated_at:new Date().toISOString() });
-          alert(docSnap.data().name + " を出庫しました (残り: " + newQty + ")");
-          refreshInventory();
-        }
-      };
-    });
-  }
-  refreshInventory();
-
-  // -------------------------------
-  // QuaggaJS 初期化
-  // -------------------------------
-  const statusElem = document.getElementById('barcode-result');
-  let lastCode = "";
-  let cooldown = false;
-
+  // ===== バーコードスキャン =====
+  const resultElem = document.getElementById('barcode-result');
   Quagga.init({
-    inputStream: { type:"LiveStream", constraints:{facingMode:"environment"}, target:document.querySelector('#camera-container') },
+    inputStream: { type:"LiveStream", constraints:{facingMode:"environment"}, target: document.querySelector('#barcode-scanner') },
     decoder: { readers:["code_128_reader","ean_reader","upc_reader"] }
-  }, function(err){
-    if(err){ statusElem.textContent = "カメラ初期化エラー: " + err; return; }
-    Quagga.start();
-  });
+  }, err => { if(err){ resultElem.textContent="カメラ初期化エラー: "+err; return; } Quagga.start(); });
 
   Quagga.onDetected(async function(data){
     const code = data.codeResult.code;
-    if(code === lastCode || cooldown) return;
-    lastCode = code;
-    cooldown = true;
-    setTimeout(()=>{ cooldown=false; }, 2000);
-    statusElem.textContent = "検出: " + code;
+    resultElem.textContent = "検出: " + code;
 
+    // バーコードで Firestore を検索
+    const docRef = db.collection('reagents').doc(code);
+    const docSnap = await docRef.get();
     const form = document.getElementById('form-container');
-    form.style.display = "block";
+    const title = document.getElementById('form-title');
+    document.getElementById('reagent-name').value = '';
+    document.getElementById('reagent-qty').value = 1;
+    document.getElementById('reagent-exp').value = '';
 
-    const docRef = db.collection("reagents").doc(code);
-    const doc = await docRef.get();
-    if(doc.exists){
-      const d = doc.data();
-      document.getElementById('reagent-name').value = d.name;
-      document.getElementById('reagent-qty').value = 1;
-      document.getElementById('reagent-exp').value = d.expiration;
+    if(docSnap.exists){
+      // 既存
+      title.textContent = `既存試薬: ${docSnap.data().name} 更新`;
+      document.getElementById('reagent-name').value = docSnap.data().name;
     } else {
-      document.getElementById('reagent-name').value = "";
-      document.getElementById('reagent-qty').value = 1;
-      document.getElementById('reagent-exp').value = "";
+      title.textContent = "新規試薬登録";
     }
 
-    // 保存ボタン
-    const btn = document.getElementById('save-btn');
+    form.style.display = 'block';
+
+    // 登録/更新ボタン
+    const btn = document.getElementById('submit-btn');
     btn.onclick = async () => {
-      const name = document.getElementById('reagent-name').value;
+      const name = document.getElementById('reagent-name').value.trim();
       const qty = parseInt(document.getElementById('reagent-qty').value);
       const exp = document.getElementById('reagent-exp').value;
-      if(!name || !exp){ alert("名前と有効期限は必須です"); return; }
+      if(!name || !exp){ alert("名前と有効期限は必須"); return; }
 
-      const docSnap = await docRef.get();
       if(docSnap.exists){
         await docRef.update({ qty: docSnap.data().qty + qty, updated_at: new Date().toISOString() });
         alert(name + " の数量を更新しました");
@@ -152,10 +102,41 @@ h1 { margin-top:20px; font-size:2em; }
         await docRef.set({ name:name, qty:qty, expiration:exp, created_at:new Date().toISOString(), updated_at:new Date().toISOString() });
         alert(name + " を登録しました");
       }
-      form.style.display = "none";
-      refreshInventory();
+
+      form.style.display = 'none';
+      await refreshInventory();
+      document.querySelector('#inventory-table').scrollIntoView({ behavior: 'smooth' });
     };
   });
+
+  // ===== 在庫一覧表示 =====
+  async function refreshInventory(){
+    const tbody = document.querySelector('#inventory-table tbody');
+    tbody.innerHTML = '';
+    const snapshot = await db.collection('reagents').get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${data.name}</td>
+                      <td>${data.qty}</td>
+                      <td>${data.expiration}</td>
+                      <td>${doc.id}</td>
+                      <td><button onclick="decreaseQty('${doc.id}')">出庫</button></td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  async function decreaseQty(id){
+    const docRef = db.collection('reagents').doc(id);
+    const docSnap = await docRef.get();
+    if(docSnap.exists){
+      const newQty = Math.max(docSnap.data().qty - 1, 0);
+      await docRef.update({ qty:newQty, updated_at:new Date().toISOString() });
+      await refreshInventory();
+    }
+  }
+
+  refreshInventory();
 </script>
 </body>
 </html>
